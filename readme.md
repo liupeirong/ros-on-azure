@@ -16,19 +16,19 @@ There are multiple options to implement this use case, each with its pros and co
 * [Azure IoT Hub File Upload](https://docs.microsoft.com/en-us/azure/iot-hub/iot-hub-csharp-csharp-file-upload) lets you upload files from device to cloud using Azure IoT SDK. However, if internet connection from the device to the cloud is unavailable, upload will fail, and the application will need to handle the failure.
 * [**Azure IoT Edge Blob Storage**](https://docs.microsoft.com/en-us/azure/iot-edge/how-to-store-data-blob?view=iotedge-2020-11) can run on an Azure IoT Edge device, and automatically upload files to the cloud when internet connection is available. It can also optionally delete local files after they are successfully uploaded. We use this option to upload data to the cloud in this sample.
 
-### Process ros bag files in the cloud
+### Detect new file upload in the cloud to trigger processing
 
 Data processing happens in the cloud when a new blob is uploaded. There are multiple ways to subscribe to blob upload events in Azure. For example,
 
-* [**Azure Event Grid**](https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blob-event-overview#the-event-model) will send data to a subscribing endpoint when a blob is uploaded.
-* If you use Azure IoT Hub File Upload, then [Azure IoT Hub File Upload notification](https://docs.microsoft.com/en-us/azure/iot-hub/iot-hub-devguide-file-upload#file-upload-notifications) lets you receive notifications using Azure IoT SDK once the robot uploads a file to blob storage.  
+* [Azure Event Grid](https://docs.microsoft.com/en-us/azure/storage/blobs/storage-blob-event-overview#the-event-model) sends data to a subscribing endpoint when a blob is uploaded.
+* If you use Azure IoT Hub File Upload, [Azure IoT Hub File Upload notification](https://docs.microsoft.com/en-us/azure/iot-hub/iot-hub-devguide-file-upload#file-upload-notifications) lets you receive notifications using Azure IoT SDK once a file is uploaded to blob storage.
+* [**Azure Function Blob Storage trigger**](https://docs.microsoft.com/en-us/azure/azure-functions/functions-bindings-storage-blob-trigger?tabs=csharp) is the simplest way to trigger a function to process a new blob. It is, however, less efficient compared to Event Grid because it uses a polling mechanism. We use this trigger in this sample for simplicity because for scripting languages such as Python, you [can't use function.json to bind the blob that triggered the function to input](https://github.com/Azure/azure-functions-host/issues/7013), so you'll have to write extra code to parse the event and access the blob using Azure SDK. There's also a [Event Grid based Blob trigger](https://docs.microsoft.com/en-us/azure/azure-functions/functions-event-grid-blob-trigger?tabs=csharp), but at the time of this writing (Aug 2021), it's still in preview.
 
-In this example, since we use Azure IoT Edge Blob Storage rather than Azure IoT Hub File Upload, we use Event Grid for blob upload notification. There are still multiple options to process the blob once a new blob is detected.
+### Process files in the cloud
 
-* [Azure Container Instance](https://docs.microsoft.com/en-us/azure/container-instances/container-instances-overview) is the easiest way to run any Docker container if there's no requirement for multi-container orchestration. You can install ROS and Cartographer in a Docker image, and write code using Azure SDK to subscribe to Event Grid events for blob upload.
+* [Azure Container Instance](https://docs.microsoft.com/en-us/azure/container-instances/container-instances-overview) is the easiest way to run any Docker container when no complex or multi-container orchestration is required. You can install ROS and Cartographer in a Docker image, and write code using Azure SDK to subscribe to Event Grid for blob upload.
 * [App Service using a custom container](https://docs.microsoft.com/en-us/azure/app-service/tutorial-custom-container?pivots=container-linux) can run a web app from a custom Docker container in Azure App Service. I have not tested it myself, but supposedly you can run a non-web app by creating a Linux container and run a loop in the startup application. Similar to Azure Container Instance, you need to write code to susbscribe to Event Grid for blob upload notifications.
-* [**Azure Function with Custom Container**](https://docs.microsoft.com/en-us/azure/azure-functions/functions-create-function-linux-custom-image?tabs=bash%2Cportal&pivots=programming-language-python) has a built-in Blob storage or Event Grid trigger as well as input/output bindings to Blob Storage, so it requires least amount of coding. This sample uses the Blob storage trigger since it's the simplest.
-  >> [Blob storage trigger uses a less efficient polling mechanism to detect blob changes as compared to Event Grid](https://docs.microsoft.com/en-us/azure/azure-functions/functions-bindings-storage-blob-trigger?tabs=csharp). However for scripting languages such as Python, when using Event Grid trigger, you [can't use function.json to bind the blob that triggered the function to blob input binding](https://github.com/Azure/azure-functions-host/issues/7013), so you'll have to write extra code to parse the event and access the blob using Azure SDK. There's also a [Event Grid based Blob trigger](https://docs.microsoft.com/en-us/azure/azure-functions/functions-event-grid-blob-trigger?tabs=csharp), but at the time of this writing (Aug 2021), it's still in preview.
+* [**Azure Function with Custom Container**](https://docs.microsoft.com/en-us/azure/azure-functions/functions-create-function-linux-custom-image?tabs=bash%2Cportal&pivots=programming-language-python) requires the least amount of coding when used with the aforementioned blob storage trigger. This is the option we choose for this sample.
 
 The above options also differ in cost. For example, using the Azure pricing calculator, to get a pay-as-you-go compute instance of 2 vcpu cores and 8GB memory in North Central US region, here's the rough cost per month at the time of this writing (Aug 2021).
 
@@ -55,7 +55,7 @@ Steps 1, 2, and 3 happen at development/deployment time, 4 and 5 happen at runti
 
 ## What's next?
 
-1. Load test based on the number of robots and the frequency they generate bag files. Also assess if we need to use Event Grid trigger instead of Blob storage trigger if detection latency is high.
-1. Experiment what's required in order to run ROS or Cartographer code natively in C++ or Python rather than spinning up a process to run command line tools.
-1. Experiment using Azure App Service or Azure Container Instance if there's a need to bring down cost.
-1. Explore using Managed Identity for the function to access blob storage.
+* Load test based on the number of robots and the frequency they generate bag files. Also assess if we need to use Event Grid trigger instead of Blob storage trigger if detection latency is high.
+* Experiment what's required in order to run ROS or Cartographer code natively in C++ or Python rather than spinning up a process to run command line tools.
+* Experiment using Azure App Service or Azure Container Instance if there's a need to bring down cost.
+* Explore using Managed Identity for the function to access blob storage.
