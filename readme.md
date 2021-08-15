@@ -38,11 +38,24 @@ The above options also differ in cost. For example, using the Azure pricing calc
 
 ## How it works
 
-Step 1: Set up Azure IoT Edge Blob Storage
+The following diagram illustrates how this sample works:
+![architecture](RosArchitecture.png)
 
-For a `BlobTrigger` to work, you provide a path which dictates where the blobs are located inside your container, and can also help restrict the types of blobs you wish to return. For instance, you can set the path to `samples/{name}.png` to restrict the trigger to only the samples path and only blobs with ".png" at the end of their name.
+Steps 1, 2, and 3 happen at development/deployment time, 4 and 5 happen at runtime.
+
+1. Create an Azure IoT Edge device, register it with Azure IoT Hub, and deploy [Azure Blob Storage on IoT Edge](https://docs.microsoft.com/en-us/azure/iot-edge/how-to-store-data-blob?view=iotedge-2020-11). Also deploy an Azure Blob Storage in the cloud so that the edge storage is configured to automatically upload to the cloud.
+1. [Create a custom Docker container from a Azure Function base image and install ROS and Cartographer packages](Dockerfile). [Implement application logic](BlobExample/__init__.py) and deploy the image to a container registry such as Docker Hub or Azure Container Registry.
+1. [Deploy the custom container based Azure Function app](https://docs.microsoft.com/en-us/azure/azure-functions/functions-create-function-linux-custom-image?tabs=bash%2Cportal&pivots=programming-language-python#create-and-configure-a-function-app-on-azure-with-the-image) to pull the Docker image from the container registry.
+1. The robots generate ros bag files and send them to the Azure Blob Stroage on the IoT Edge. The files are automatically uploaded to the cloud storage.
+1. The Azure Function is [triggered](BlobExample/function.json#L6) whenever a new blob is created, it then uses [ROS or Cartographer tools and libraries to process the file](BlobExample/__init__.py#L24) and uses the [output blob storage binding](BlobExample/function.json#L13) to automatically save the output back to the cloud blob storage.
 
 ## Known issue
 
-* When testing locally in Docker, Azure blob trigger runs on all the blobs already in storage every time the function is updated (or when running local in a container, because host ID changes every time, and blob receipt is based on host id). https://github.com/Azure/azure-webjobs-sdk/issues/1327
-* Storage binding doesn't support managed identity. https://github.com/Azure/azure-functions-host/issues/6423. And what about when function runs in a docker?
+* When testing the function locally, everytime the Docker container starts, all the blobs already in the IoT Edge storage will trigger the function. This is expected because the trigger tracks [blob receipts](https://docs.microsoft.com/en-us/azure/azure-functions/functions-bindings-storage-blob-trigger?tabs=csharp#blob-receipts) to determine if a blob has already been processed. When running locally, part of the function name is the container id.
+
+## What's next?
+
+1. Load test based on the number of robots and the frequency they generate bag files. Also assess if we need to use Event Grid trigger instead of Blob storage trigger if detection latency is high.
+1. Experiment what's required in order to run ROS or Cartographer code natively in C++ or Python rather than spinning up a process to run command line tools.
+1. Experiment using Azure App Service or Azure Container Instance if there's a need to bring down cost.
+1. Explore using Managed Identity for the function to access blob storage.
